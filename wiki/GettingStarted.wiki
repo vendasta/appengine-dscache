@@ -6,6 +6,7 @@
  # Place the `dscache` folder into your Python path.
  # Add a mapping for the vacuum to your `app.yaml` file.
  # Add an entry to your `cron.yaml` file.
+ # Code using the same API as the [https://code.google.com/appengine/docs/python/memcache/overview.html memcache API].
  # Enjoy!
 
 == `app.yaml` ==
