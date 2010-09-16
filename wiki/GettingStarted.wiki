@@ -17,7 +17,7 @@ Make an entry in your `handlers` section of `app.yaml` something like this:
 {{{
 handlers:
 
-- url: /cron/dscache/.*
+- url: /dscache/.*
    script: dscache.main
    login: admin
 }}}
@@ -30,6 +30,6 @@ You need to schedule the vacuum to run periodically. The running time depends on
 cron:
 
 - description: vacuum dscache
-  url: /cron/dscache/vacuum/
+  url: /dscache/vacuum/ # the /dscache/ root needs to match the app.yaml entry
   schedule: every 5 minutes synchronized
 }}}
