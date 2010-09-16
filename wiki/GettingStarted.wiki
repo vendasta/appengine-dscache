@@ -1,0 +1,35 @@
+#summary Quick start guide.
+#labels Featured
+
+= Getting Started =
+
+ # Place the `dscache` folder into your Python path.
+ # Add a mapping for the vacuum to your `app.yaml` file.
+ # Add an entry to your `cron.yaml` file.
+ # Enjoy!
+
+== `app.yaml` ==
+
+You need to map a url handler to the dscache vacuum.
+
+Make an entry in your `handlers` section of `app.yaml` something like this:
+
+{{{
+handlers:
+
+- url: /cron/dscache/.*
+   script: dscache.main
+   login: admin
+}}}
+
+== `cron.yaml` ==
+
+You need to schedule the vacuum to run periodically. The running time depends on how busy your cache churn is. The vacuum simply runs until it runs out of time (30s), so if you see `DeadlineExceededError` in the logs related to this url, you need to run it more frequently.
+
+{{{
+cron:
+
+- description: vacuum dscache
+  url: /cron/dscache/vacuum/
+  schedule: every 5 minutes synchronized
+}}}
