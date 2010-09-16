@@ -33,3 +33,5 @@ cron:
   url: /dscache/vacuum/ # the /dscache/ root needs to match the app.yaml entry
   schedule: every 5 minutes synchronized
 }}}
+
+*NOTE* `get()` and `get_multi()` will respect the cache entry timeouts regardless of how often vacuum is run.
