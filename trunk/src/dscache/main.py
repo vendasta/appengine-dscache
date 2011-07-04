@@ -21,7 +21,7 @@ See http://code.google.com/p/appengine-dscache/wiki/GettingStarted for instructi
 
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util
-from dscache import vacuum
+from dscache.vacuum import Vacuum
 
 def createApplication():
     """Create new WSGIApplication and register all handlers.
@@ -30,7 +30,7 @@ def createApplication():
         an instance of webapp.WSGIApplication with all dscache handlers registered.
     """
     return webapp.WSGIApplication([
-        (r"^/[^\/]+/vacuum/", vacuum.Vacuum)
+        (r"^/[^\/]+/vacuum/", Vacuum)
     ],
     debug=True)
 
