@@ -56,7 +56,8 @@ def build_ds_key_name(key, key_prefix='', namespace=None):
     
 def build_ds_key(key, key_prefix='', namespace=None):
     """ Builds a Key instance. """
-    return db.Key.from_path('_DSCache', build_ds_key_name(key, key_prefix=key_prefix, namespace=namespace))
+    return db.Key.from_path('_DSCache', build_ds_key_name(key, key_prefix=key_prefix, namespace=namespace),
+                            namespace='')
     
 def set_value_on_entity(entity, value):
     """ Set a type-specific attribute on the entity. This is convenient when viewing the datastore
@@ -141,7 +142,8 @@ def is_entity_expired(entity):
     
 def create_entity(key, value, time=0, key_prefix='', namespace=None):
     """ Creates a new _DSCache entity (without putting it). """
-    entity = _DSCache(key_name=build_ds_key_name(key, key_prefix=key_prefix, namespace=namespace))
+    key = build_ds_key(key, key_prefix=key_prefix, namespace=namespace)
+    entity = _DSCache(key=key)
     set_value_on_entity(entity, value)
     if time:
         entity.timeout = compute_timeout(time)
