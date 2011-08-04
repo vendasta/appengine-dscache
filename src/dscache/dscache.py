@@ -30,7 +30,7 @@ try:
 except ImportError:
     HAS_SIMPLEJSON = False
 
-MAX_STR_LENGTH = 1024
+MAX_STR_LENGTH = 500
 MAX_KEY_SIZE = 500
 
 __all__ = ['set', 'set_multi', 'get', 'get_multi', 'delete', 'delete_multi', 'add', 'add_multi', 
