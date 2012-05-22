@@ -36,5 +36,6 @@ class _DSCache(db.Model):
     text_val = db.TextProperty(indexed=False)
     json_val = db.TextProperty(indexed=False)
     blob_val = db.BlobProperty(indexed=False)
+    cas_id = db.FloatProperty(indexed=False)
     
     timeout = db.DateTimeProperty()

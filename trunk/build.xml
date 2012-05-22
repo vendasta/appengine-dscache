@@ -6,7 +6,7 @@
     <property name="srcdir" value="${basedir}/src"/>
     <property name="testdir" value="${basedir}/test"/>
     <property name="appenginedir" value="/usr/local/google_appengine"/>
-    <property name="tests.pythonpath" value="${srcdir}:${basedir}:${appenginedir}:${appenginedir}/lib/django:${appenginedir}/lib/yaml/lib:${appenginedir}/lib/webob:${testdir}"/>
+    <property name="tests.pythonpath" value="${srcdir}:${basedir}:${appenginedir}:${appenginedir}/lib/django:${appenginedir}/lib/yaml/lib:${appenginedir}/lib/webob_1_1_1:${testdir}"/>
 
     <target name="clean">
         <delete>
@@ -26,5 +26,5 @@
             <arg line="${testdir}/runner.py ${tests}"/>
         </exec>
     </target>
-    
+
 </project>
