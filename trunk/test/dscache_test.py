@@ -506,3 +506,19 @@ class CasTests(DatastoreTests):
         self.client.cas('key', 'value', time=-1)
         value = self.client.get('key')
         self.assertEquals(None, value)
+
+    def test_cas_for_missing_key_on_gets_fails(self):
+        # The following holds for memcache:
+        # client = memcache.Client()
+        # value = client.gets('foo')
+        # assert value is None
+        # result = client.cas('foo', 1)
+        # assert result == False -- cas fails on keys that were not present in dscache
+        # value = client.gets('foo')
+        # assert value is None -- nothing was inserted on the above call to cas()
+        value = self.client.gets('never-heard-of-you')
+        self.assertEquals(value, None)
+        result = self.client.cas('never-heard-of-you', 'value')
+        self.assertFalse(result)
+        value = self.client.gets('never-heard-of-you')
+        self.assertEquals(value, None) # nothing was inserted into dscache
