@@ -17,25 +17,25 @@ Copyright 2010 VendAsta Technologies Inc.
    limitations under the License.
 """
 
-from google.appengine.ext import db
+from google.appengine.ext import ndb
 
-class _DSCache(db.Model):
+class _DSCache(ndb.Model):
     """ The actual dscache cache entry.
     
     Exactly one of the *_val items should have a non-None value.
     Timeout is a UTC absolute timeout.
     """
+
+    int_val = ndb.IntegerProperty(indexed=False)
+    float_val = ndb.FloatProperty(indexed=False)
+    date_val = ndb.DateProperty(indexed=False)
+    time_val = ndb.TimeProperty(indexed=False)
+    datetime_val = ndb.DateTimeProperty(indexed=False)
+    bool_val = ndb.BooleanProperty(indexed=False)
+    str_val = ndb.StringProperty(indexed=False)
+    text_val = ndb.TextProperty(indexed=False)
+    json_val = ndb.TextProperty(indexed=False)
+    blob_val = ndb.BlobProperty(indexed=False)
+    cas_id = ndb.FloatProperty(indexed=False)
     
-    int_val = db.IntegerProperty(indexed=False)
-    float_val = db.FloatProperty(indexed=False)
-    date_val = db.DateProperty(indexed=False)
-    time_val = db.TimeProperty(indexed=False)
-    datetime_val = db.DateTimeProperty(indexed=False)
-    bool_val = db.BooleanProperty(indexed=False)
-    str_val = db.StringProperty(indexed=False)
-    text_val = db.TextProperty(indexed=False)
-    json_val = db.TextProperty(indexed=False)
-    blob_val = db.BlobProperty(indexed=False)
-    cas_id = db.FloatProperty(indexed=False)
-    
-    timeout = db.DateTimeProperty()
+    timeout = ndb.DateTimeProperty()

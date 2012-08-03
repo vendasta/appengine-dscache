@@ -18,7 +18,7 @@ Copyright 2010 VendAsta Technologies Inc.
 """
 
 import datetime
-from google.appengine.ext import webapp, db
+from google.appengine.ext import webapp, ndb
 from models import _DSCache
 
 BATCH_DELETE_SIZE = 100
@@ -33,11 +33,12 @@ class Vacuum(webapp.RequestHandler):
         """ The GET method. """
         now = datetime.datetime.utcnow()
         
-        query = _DSCache.all(keys_only=True).filter('timeout <', now)
+        query = _DSCache.query().filter(_DSCache.timeout < now)
         
         # this will just run until the rug gets pulled out (DeadlineExceededError)
-        keys = query.fetch(BATCH_DELETE_SIZE)
-        db.delete(keys)
+        keys = query.fetch(BATCH_DELETE_SIZE, keys_only=True)
+
+        ndb.delete_multi(keys)
         while len(keys) == BATCH_DELETE_SIZE:
-            keys = query.fetch(BATCH_DELETE_SIZE)
-            db.delete(keys)
+            keys = query.fetch(BATCH_DELETE_SIZE, keys_only=True)
+            ndb.delete_multi(keys)
