@@ -22,14 +22,19 @@ import pickle
 import datetime
 import logging
 import time as time_pkg
-from google.appengine.ext import db
+from google.appengine.datastore import datastore_rpc
+from google.appengine.ext import ndb
 from models import _DSCache
 
 try:
-    import simplejson
+    import json as simplejson
     HAS_SIMPLEJSON = True
 except ImportError:
-    HAS_SIMPLEJSON = False
+    try:
+        import simplejson
+        HAS_SIMPLEJSON = True
+    except ImportError:
+        HAS_SIMPLEJSON = False
 
 MAX_STR_LENGTH = 500
 MAX_KEY_SIZE = 500
@@ -38,8 +43,8 @@ __all__ = ['set', 'set_multi', 'get', 'get_multi', 'delete', 'delete_multi', 'ad
            'replace', 'replace_multi', 'incr', 'decr', 'offset_multi', 'flush_all', 'get_stats', 'Client',
            'STRONG_CONSISTENCY', 'EVENTUAL_CONSISTENCY']
 
-STRONG_CONSISTENCY = db.STRONG_CONSISTENCY
-EVENTUAL_CONSISTENCY = db.EVENTUAL_CONSISTENCY
+STRONG_CONSISTENCY = datastore_rpc.Configuration.STRONG_CONSISTENCY
+EVENTUAL_CONSISTENCY = datastore_rpc.Configuration.EVENTUAL_CONSISTENCY
 
 def build_ds_key_name(key, key_prefix='', namespace=None):
     """ Builds a key_name. """
@@ -57,8 +62,7 @@ def build_ds_key_name(key, key_prefix='', namespace=None):
 
 def build_ds_key(key, key_prefix='', namespace=None):
     """ Builds a Key instance. """
-    return db.Key.from_path('_DSCache', build_ds_key_name(key, key_prefix=key_prefix, namespace=namespace),
-                            namespace='')
+    return ndb.Key('_DSCache', build_ds_key_name(key, key_prefix=key_prefix, namespace=namespace), namespace='')
 
 def set_value_on_entity(entity, value):
     """ Set a type-specific attribute on the entity. This is convenient when viewing the datastore
@@ -151,14 +155,14 @@ def create_entity(key, value, time=0, key_prefix='', namespace=None):
     entity.cas_id = time_pkg.time()
     return entity
 
-def set(key, value, time=0, namespace=None):
+def set(key, value, time=0, namespace=None, **ctx_options):
     """ Sets a key's value, regardless of previous contents in cache.
 
     The return value is True if set, False on error.
     """
     entity = create_entity(key, value, time=time, namespace=namespace)
     try:
-        entity.put()
+        entity.put(**ctx_options)
     except Exception:
         logging.exception('dscache: error on dscache.set(). %s', key)
         return False
@@ -169,7 +173,7 @@ def _chunks(l, n):
     """ Breaks a list l into chunks of maximum size n. """
     return [l[i:i+n] for i in range(0, len(l), n)]
 
-def set_multi(mapping, time=0, key_prefix='', namespace=None):
+def set_multi(mapping, time=0, key_prefix='', namespace=None, **ctx_options):
     """ Set multiple keys' values at once. Reduces the network latency of doing many requests in serial.
 
     The return value is a list of keys whose values were NOT set. On total success, this list should be empty.
@@ -189,7 +193,7 @@ def set_multi(mapping, time=0, key_prefix='', namespace=None):
     for sub_list in entities:
         entities, keys = zip(*sub_list)
         try:
-            db.put(entities)
+            ndb.put_multi(entities, **ctx_options)
         except Exception:
             s = str(keys)
             if len(s) > 50:
@@ -199,15 +203,14 @@ def set_multi(mapping, time=0, key_prefix='', namespace=None):
             failed_keys.extend(keys)
     return failed_keys
 
-def _get_entity(key, namespace=None, read_policy=STRONG_CONSISTENCY):
+def _get_entity(key, namespace=None, **ctx_options):
     """ Looks up a single entity in dscache.
 
     The return value is the entity, if found in dscache, else None.
     """
     ds_key = build_ds_key(key, namespace=namespace)
     try:
-        rpc = db.create_rpc(read_policy=read_policy)
-        entity = db.get(ds_key, rpc=rpc)
+        entity = ds_key.get(**ctx_options)
         if is_entity_expired(entity):
             return None
     except Exception:
@@ -216,18 +219,18 @@ def _get_entity(key, namespace=None, read_policy=STRONG_CONSISTENCY):
     else:
         return entity
 
-def get(key, namespace=None, read_policy=STRONG_CONSISTENCY):
+def get(key, namespace=None, **ctx_options):
     """ Looks up a single key in dscache.
 
     The return value is the value of the key, if found in dscache, else None.
     """
-    entity = _get_entity(key, namespace=namespace, read_policy=read_policy)
+    entity = _get_entity(key, namespace=namespace, **ctx_options)
     if entity:
         return get_value_from_entity(entity)
     else:
         return None
 
-def get_multi(keys, key_prefix='', namespace=None, read_policy=STRONG_CONSISTENCY):
+def get_multi(keys, key_prefix='', namespace=None, **ctx_options):
     """ Looks up multiple keys from dscache in one operation. This is the recommended way to do bulk loads.
 
     The returned value is a dictionary of the keys and values that were present in dscache.
@@ -235,14 +238,13 @@ def get_multi(keys, key_prefix='', namespace=None, read_policy=STRONG_CONSISTENC
     """
     ds_keys = [build_ds_key(key, key_prefix=key_prefix, namespace=namespace) for key in keys]
     try:
-        rpc = db.create_rpc(read_policy=read_policy)
-        entities = db.get(ds_keys, rpc=rpc)
+        entities = ndb.get_multi(ds_keys, **ctx_options)
     except Exception:
         s = str(keys)
         logging.exception('dscache: error on dscache.get_multi(). %s', s[:50])
         return {}
     else:
-        entity_map = dict([(entity.key(), entity) for entity in entities if entity])
+        entity_map = dict([(entity.key, entity) for entity in entities if entity])
         result = {}
         for key in keys:
             ds_key = build_ds_key(key, key_prefix=key_prefix, namespace=namespace)
@@ -252,7 +254,7 @@ def get_multi(keys, key_prefix='', namespace=None, read_policy=STRONG_CONSISTENC
                     result[key] = value
         return result
 
-def delete(key, seconds=0, namespace=None):
+def delete(key, seconds=0, namespace=None, **ctx_options):
     """ Deletes a key from dscache.
 
     #The return value is 0 (DELETE_NETWORK_FAILURE) on network failure, 1 (DELETE_ITEM_MISSING)
@@ -265,14 +267,14 @@ def delete(key, seconds=0, namespace=None):
         raise NotImplementedError('delete lock not implemented.')
     ds_key = build_ds_key(key, namespace=namespace)
     try:
-        db.delete(ds_key)
+        ds_key.delete(**ctx_options)
     except Exception:
         logging.exception('dscache: error on dscache.delete() %s', key)
         return False
     else:
         return True
 
-def delete_multi(keys, seconds=0, key_prefix='', namespace=None):
+def delete_multi(keys, seconds=0, key_prefix='', namespace=None, **ctx_options):
     """ Delete multiple keys at once.
 
     The return value is True if all operations completed successfully. False if one or more failed to complete.
@@ -281,7 +283,7 @@ def delete_multi(keys, seconds=0, key_prefix='', namespace=None):
         raise NotImplementedError('delete lock not implemented.')
     ds_keys = [build_ds_key(key, key_prefix=key_prefix, namespace=namespace) for key in keys]
     try:
-        db.delete(ds_keys)
+        ndb.delete_multi(ds_keys, **ctx_options)
     except Exception:
         s = str(keys)
         logging.exception('dscache: error on dscache.delete_multi(). %s', s[:50])
@@ -289,7 +291,7 @@ def delete_multi(keys, seconds=0, key_prefix='', namespace=None):
     else:
         return True
 
-def add(key, value, time=0, namespace=None):
+def add(key, value, time=0, namespace=None, **ctx_options):
     """ Sets a key's value, if and only if the item is not already in dscache.
 
     The return value is True if added, False on error.
@@ -300,19 +302,19 @@ def add(key, value, time=0, namespace=None):
     def tx():
         """ Tries to get an existing entity, and adds a new one if not found. """
         result = False
-        existing_entity = db.get(ds_key)
+        existing_entity = ds_key.get(**ctx_options)
         if (not existing_entity) or (is_entity_expired(existing_entity)):
             entity = create_entity(key, value, time=time, namespace=namespace)
-            entity.put()
+            entity.put(**ctx_options)
             result = True
         return result
     try:
-        return db.run_in_transaction(tx)
+        return ndb.transaction(tx)
     except Exception:
         logging.exception('dscache: error on dscache.add(). %s', key)
         return False
 
-def add_multi(mapping, time=0, key_prefix='', namespace=None):
+def add_multi(mapping, time=0, key_prefix='', namespace=None, **ctx_options):
     """ Adds multiple values at once, with no effect for keys already in dscache.
 
     The return value is a list of keys whose values were not set because they were already set in dscache, or an empty list.
@@ -320,21 +322,21 @@ def add_multi(mapping, time=0, key_prefix='', namespace=None):
     # this is difficult to do efficiently
     raise NotImplementedError()
 
-def replace(key, value, time=0, namespace=None):
+def replace(key, value, time=0, namespace=None, **ctx_options):
     """ Replaces a key's value, failing if item isn't already in dscache.
 
     The return value is True if replaced. False on error or cache miss.
     """
     raise NotImplementedError()
 
-def replace_multi(mapping, time=0, key_prefix='', namespace=None):
+def replace_multi(mapping, time=0, key_prefix='', namespace=None, **ctx_options):
     """ Replaces multiple values at once, with no effect for keys not in dscache.
 
     The return value is a list of keys whose values were not set because they were not set in dscache, or an empty list.
     """
     raise NotImplementedError()
 
-def incr(key, delta=1, namespace=None, initial_value=None):
+def incr(key, delta=1, namespace=None, initial_value=None, **ctx_options):
     """ Atomically increments a key's value. Internally, the value is a unsigned 64-bit integer.
     dscache doesn't check 64-bit overflows. The value, if too large, will wrap around.
     If the key does not yet exist in the cache and you specify an initial_value,
@@ -346,7 +348,7 @@ def incr(key, delta=1, namespace=None, initial_value=None):
     """
     raise NotImplementedError()
 
-def decr(key, delta=1, namespace=None, initial_value=None):
+def decr(key, delta=1, namespace=None, initial_value=None, **ctx_options):
     """ Atomically decrements a key's value. Internally, the value is a unsigned 64-bit integer.
     dscache doesn't check 64-bit overflows. The value, if too large, will wrap around.
     If the key does not yet exist in the cache and you specify an initial_value,
@@ -358,7 +360,7 @@ def decr(key, delta=1, namespace=None, initial_value=None):
     """
     raise NotImplementedError()
 
-def offset_multi(mapping, key_prefix='', namespace=None, initial_value=None):
+def offset_multi(mapping, key_prefix='', namespace=None, initial_value=None, **ctx_options):
     """ Increments or decrements multiple keys with integer values in a single service call.
     Each key can have a separate offset. The offset can be positive or negative.
     Applying an offset to a single key is atomic. Applying an offset to multiple keys may
@@ -370,7 +372,7 @@ def offset_multi(mapping, key_prefix='', namespace=None, initial_value=None):
     """
     raise NotImplementedError()
 
-def flush_all():
+def flush_all(**ctx_options):
     """ Deletes everything in dscache.
 
     The return value is True on success, False on RPC or server error."""
@@ -392,36 +394,36 @@ class Client(object):
         """ Initalizes client. """
         self.cas_reset()
 
-    def set(self, key, value, time=0, namespace=None):
+    def set(self, key, value, time=0, namespace=None, **ctx_options):
         """ Sets a key's value, regardless of previous contents in cache.
 
         The return value is True if set, False on error.
         """
-        return set(key, value, time=time, namespace=namespace)
+        return set(key, value, time=time, namespace=namespace, **ctx_options)
 
-    def set_multi(self, mapping, time=0, key_prefix='', namespace=None):
+    def set_multi(self, mapping, time=0, key_prefix='', namespace=None, **ctx_options):
         """ Set multiple keys' values at once. Reduces the network latency of doing many requests in serial.
 
         The return value is a list of keys whose values were NOT set. On total success, this list should be empty.
         """
-        return set_multi(mapping, time=time, key_prefix=key_prefix, namespace=namespace)
+        return set_multi(mapping, time=time, key_prefix=key_prefix, namespace=namespace, **ctx_options)
 
-    def get(self, key, namespace=None, read_policy=STRONG_CONSISTENCY):
+    def get(self, key, namespace=None, **ctx_options):
         """ Looks up a single key in dscache.
 
         The return value is the value of the key, if found in dscache, else None.
         """
-        return get(key, namespace=namespace, read_policy=read_policy)
+        return get(key, namespace=namespace, **ctx_options)
 
-    def get_multi(self, keys, key_prefix='', namespace=None, read_policy=STRONG_CONSISTENCY):
+    def get_multi(self, keys, key_prefix='', namespace=None, **ctx_options):
         """ Looks up multiple keys from dscache in one operation. This is the recommended way to do bulk loads.
 
         The returned value is a dictionary of the keys and values that were present in dscache.
         Even if the key_prefix was specified, that key_prefix won't be on the keys in the returned dictionary.
         """
-        return get_multi(keys, key_prefix=key_prefix, namespace=namespace, read_policy=read_policy)
+        return get_multi(keys, key_prefix=key_prefix, namespace=namespace, **ctx_options)
 
-    def delete(self, key, seconds=0, namespace=None):
+    def delete(self, key, seconds=0, namespace=None, **ctx_options):
         """ Deletes a key from dscache.
 
         #The return value is 0 (DELETE_NETWORK_FAILURE) on network failure, 1 (DELETE_ITEM_MISSING)
@@ -430,44 +432,44 @@ class Client(object):
 
         Returns True if successful, False otherwise.
         """
-        return delete(key, seconds=seconds, namespace=namespace)
+        return delete(key, seconds=seconds, namespace=namespace, **ctx_options)
 
-    def delete_multi(self, keys, seconds=0, key_prefix='', namespace=None):
+    def delete_multi(self, keys, seconds=0, key_prefix='', namespace=None, **ctx_options):
         """ Delete multiple keys at once.
 
         The return value is True if all operations completed successfully. False if one or more failed to complete.
         """
-        return delete_multi(keys, seconds=seconds, key_prefix=key_prefix, namespace=namespace)
+        return delete_multi(keys, seconds=seconds, key_prefix=key_prefix, namespace=namespace, **ctx_options)
 
-    def add(self, key, value, time=0, namespace=None):
+    def add(self, key, value, time=0, namespace=None, **ctx_options):
         """ Sets a key's value, if and only if the item is not already in dscache.
 
         The return value is True if added, False on error.
         """
-        return add(key, value, time=time, namespace=namespace)
+        return add(key, value, time=time, namespace=namespace, **ctx_options)
 
-    def add_multi(self, mapping, time=0, key_prefix='', namespace=None):
+    def add_multi(self, mapping, time=0, key_prefix='', namespace=None, **ctx_options):
         """ Adds multiple values at once, with no effect for keys already in dscache.
 
         The return value is a list of keys whose values were not set because they were already set in dscache, or an empty list.
         """
-        return add_multi(mapping, time=time, key_prefix=key_prefix, namespace=namespace)
+        return add_multi(mapping, time=time, key_prefix=key_prefix, namespace=namespace, **ctx_options)
 
-    def replace(self, key, value, time=0, namespace=None):
+    def replace(self, key, value, time=0, namespace=None, **ctx_options):
         """ Replaces a key's value, failing if item isn't already in dscache.
 
         The return value is True if replaced. False on error or cache miss.
         """
-        return replace(key, value, time=time, namespace=namespace)
+        return replace(key, value, time=time, namespace=namespace, **ctx_options)
 
-    def replace_multi(self, mapping, time=0, key_prefix='', namespace=None):
+    def replace_multi(self, mapping, time=0, key_prefix='', namespace=None, **ctx_options):
         """ Replaces multiple values at once, with no effect for keys not in dscache.
 
         The return value is a list of keys whose values were not set because they were not set in dscache, or an empty list.
         """
-        return replace_multi(mapping, time=time, key_prefix=key_prefix, namespace=namespace)
+        return replace_multi(mapping, time=time, key_prefix=key_prefix, namespace=namespace, **ctx_options)
 
-    def incr(self, key, delta=1, namespace=None, initial_value=None):
+    def incr(self, key, delta=1, namespace=None, initial_value=None, **ctx_options):
         """ Atomically increments a key's value. Internally, the value is a unsigned 64-bit integer.
         dscache doesn't check 64-bit overflows. The value, if too large, will wrap around.
         If the key does not yet exist in the cache and you specify an initial_value,
@@ -477,9 +479,9 @@ class Client(object):
         The return value is a new long integer value, or None if key was not in the cache or
         could not be incremented for any other reason.
         """
-        return incr(key, delta=delta, namespace=namespace, initial_value=initial_value)
+        return incr(key, delta=delta, namespace=namespace, initial_value=initial_value, **ctx_options)
 
-    def decr(self, key, delta=1, namespace=None, initial_value=None):
+    def decr(self, key, delta=1, namespace=None, initial_value=None, **ctx_options):
         """ Atomically decrements a key's value. Internally, the value is a unsigned 64-bit integer.
         dscache doesn't check 64-bit overflows. The value, if too large, will wrap around.
         If the key does not yet exist in the cache and you specify an initial_value,
@@ -489,9 +491,9 @@ class Client(object):
         The return value is a new long integer value, or None if key was not in the cache or could not be
         decremented for any other reason.
         """
-        return decr(key, delta=delta, namespace=namespace, initial_value=initial_value)
+        return decr(key, delta=delta, namespace=namespace, initial_value=initial_value, **ctx_options)
 
-    def offset_multi(self, mapping, key_prefix='', namespace=None, initial_value=None):
+    def offset_multi(self, mapping, key_prefix='', namespace=None, initial_value=None, **ctx_options):
         """ Increments or decrements multiple keys with integer values in a single service call.
         Each key can have a separate offset. The offset can be positive or negative.
         Applying an offset to a single key is atomic. Applying an offset to multiple keys may
@@ -501,13 +503,13 @@ class Client(object):
         If there was an error applying an offset to a key, if a key doesn't exist in the cache and
         no initial_value is provided, or if a key is set with a non-integer value, its return value is None.
         """
-        return offset_multi(mapping, key_prefix=key_prefix, namespace=namespace, initial_value=initial_value)
+        return offset_multi(mapping, key_prefix=key_prefix, namespace=namespace, initial_value=initial_value, **ctx_options)
 
-    def flush_all(self):
+    def flush_all(self, **ctx_options):
         """ Deletes everything in dscache.
 
         The return value is True on success, False on RPC or server error."""
-        return flush_all()
+        return flush_all(**ctx_options)
 
     def get_stats(self):
         """ Gets dscache statistics for this application. All of these statistics may
@@ -524,7 +526,7 @@ class Client(object):
             result += namespace
         return result
 
-    def gets(self, key, namespace=None, read_policy=STRONG_CONSISTENCY):
+    def gets(self, key, namespace=None, **ctx_options):
         """
         Looks up a single key in dscache and fetches its cas_id as well. You use this method rather than get()
         if you want to avoid conditions in which two or more callers are trying to modify the same key value at
@@ -532,14 +534,14 @@ class Client(object):
         current cas_id, which is required for cas() and cas_multi() calls. (The cas_id is handled for you
         automatically by this call.)
         """
-        entity = _get_entity(key, namespace=namespace, read_policy=read_policy)
+        entity = _get_entity(key, namespace=namespace, **ctx_options)
         if entity:
             self.__cas_id[self._build_cas_dict_key(key, namespace=namespace)] = entity.cas_id or 0 # existing dscache entries may not have a cas_id
             return get_value_from_entity(entity)
         else:
             return None
 
-    def cas(self, key, value, time=0, min_compress_len=0, namespace=None):
+    def cas(self, key, value, time=0, min_compress_len=0, namespace=None, **ctx_options):
         """
         Performs a "compare and set" update to a value that was fetched by a method that supports compare and set,
         such as gets() or get_multi() with its for_cas param set to True. This method internally adds the
@@ -560,19 +562,19 @@ class Client(object):
             logging.warn('You must use a gets() method before calling cas(). Key: "%s".', key)
             return False
         # do a quick check first before the Tx
-        entity = _get_entity(key, namespace=namespace)
+        entity = _get_entity(key, namespace=namespace, **ctx_options)
         if not entity or entity.cas_id != cas_id:
             return False
         def tx():
-            entity = _get_entity(key, namespace=namespace)
+            entity = _get_entity(key, namespace=namespace, **ctx_options)
             # recheck cas_id in the Tx
             if not entity or entity.cas_id != cas_id:
                 return False
-            set(key, value, time=time, namespace=namespace)
+            set(key, value, time=time, namespace=namespace, **ctx_options)
             return True
-        return db.run_in_transaction(tx)
+        return ndb.transaction(tx)
 
-    def cas_multi(self, mapping, time=0, key_prefix='', namespace=None, rpc=None):
+    def cas_multi(self, mapping, time=0, key_prefix='', namespace=None, rpc=None, **ctx_options):
         """ Not implemented. """
         raise NotImplementedError()
 

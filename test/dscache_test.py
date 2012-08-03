@@ -4,8 +4,7 @@ import os
 import time
 import unittest
 import datetime
-import google.appengine.api.apiproxy_stub_map as apiproxy_stub_map
-import google.appengine.api.datastore_file_stub as datastore_file_stub
+from google.appengine.ext import testbed
 from dscache import dscache
 from dscache.models import _DSCache
 from dscache.vacuum import Vacuum, BATCH_DELETE_SIZE
@@ -13,12 +12,17 @@ from dscache.vacuum import Vacuum, BATCH_DELETE_SIZE
 class DatastoreTests(unittest.TestCase):
 
     def setUp(self):
-        "Sets up the unit test environment."
+        """Sets up the unit test environment."""
         APP_ID = 'dev-test'
         os.environ['APPLICATION_ID'] = APP_ID
-        apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
-        self.__datastore = datastore_file_stub.DatastoreFileStub(APP_ID, '/dev/null', '/dev/null')
-        apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', self.__datastore)
+        self.testbed = testbed.Testbed()
+        self.testbed.activate()
+        self.testbed.init_datastore_v3_stub()
+        self.testbed.init_memcache_stub()
+
+    def tearDown(self):
+        """ Tear down the unit test environment. """
+        self.testbed.deactivate()
 
 class Obj(object):
     def __init__(self, a=None, b=None):
@@ -38,7 +42,7 @@ class VacuumTests(DatastoreTests):
 
         self.vacuum.get()
 
-        keys = _DSCache.all(keys_only=True).fetch(2)
+        keys = _DSCache.query().fetch(2, keys_only=True)
         self.assertEquals(1, len(keys))
 
     def test_only_old_values_deleted(self):
@@ -47,7 +51,7 @@ class VacuumTests(DatastoreTests):
 
         self.vacuum.get()
 
-        keys = _DSCache.all(keys_only=True).fetch(2)
+        keys = _DSCache.query().fetch(2, keys_only=True)
         self.assertEquals(1, len(keys))
 
     def test_lots_to_delete(self):
@@ -56,7 +60,7 @@ class VacuumTests(DatastoreTests):
 
         self.vacuum.get()
 
-        keys = _DSCache.all(keys_only=True).fetch(1000)
+        keys = _DSCache.query().fetch(1000, keys_only=True)
         self.assertEquals(0, len(keys))
 
 class SetTests(DatastoreTests):
