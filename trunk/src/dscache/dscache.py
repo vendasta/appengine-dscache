@@ -294,14 +294,19 @@ def delete_multi(keys, seconds=0, key_prefix='', namespace=None, **ctx_options):
 def add(key, value, time=0, namespace=None, **ctx_options):
     """ Sets a key's value, if and only if the item is not already in dscache.
 
-    The return value is True if added, False on error.
+    The return value is True if added, False if not added or on an error.
     """
     # this should use get_or_insert, but that doesn't provide the information necessary to see if inserted,
     # so we aren't able to return the correct response
     ds_key = build_ds_key(key, namespace=namespace)
+    # perform an initial check as a performance optimization (not setting up a transaction)
+    existing_entity = ds_key.get(**ctx_options)
+    if existing_entity and not is_entity_expired(existing_entity):
+        return False
     def tx():
         """ Tries to get an existing entity, and adds a new one if not found. """
         result = False
+        # re-get the entity to lock it within the transaction
         existing_entity = ds_key.get(**ctx_options)
         if (not existing_entity) or (is_entity_expired(existing_entity)):
             entity = create_entity(key, value, time=time, namespace=namespace)
