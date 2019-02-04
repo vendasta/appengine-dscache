@@ -1,0 +1,5 @@
+services:
+ - name: appengine-dscache
+   language: python
+   owner: no-owner
+   nonServiceType: library
