@@ -17,24 +17,17 @@ Copyright 2010 VendAsta Technologies Inc.
    limitations under the License.
 """
 
-import sha
-import pickle
 import datetime
+import hashlib
+import json
 import logging
+import pickle
 import time as time_pkg
+
 from google.appengine.datastore import datastore_rpc
 from google.appengine.ext import ndb
-from models import _DSCache
 
-try:
-    import json as simplejson
-    HAS_SIMPLEJSON = True
-except ImportError:
-    try:
-        import simplejson
-        HAS_SIMPLEJSON = True
-    except ImportError:
-        HAS_SIMPLEJSON = False
+from .models import _DSCache
 
 MAX_STR_LENGTH = 500
 MAX_KEY_SIZE = 500
@@ -48,15 +41,15 @@ EVENTUAL_CONSISTENCY = datastore_rpc.Configuration.EVENTUAL_CONSISTENCY
 
 def build_ds_key_name(key, key_prefix='', namespace=None):
     """ Builds a key_name. """
-    if not key or not isinstance(key, (str, unicode)):
+    if not key or not isinstance(key, str):
         raise ValueError('key "%s" must be string' % key)
 
-    server_key = '%s%s' % (key_prefix, key)
+    server_key = '{}{}'.format(key_prefix, key)
     if namespace:
-        server_key = '%s:%s' % (namespace, server_key)
+        server_key = '{}:{}'.format(namespace, server_key)
 
     if len(server_key) > MAX_KEY_SIZE:
-        server_key = sha.new(server_key).hexdigest()
+        server_key = hashlib.sha1(server_key.encode()).hexdigest()
 
     return server_key
 
@@ -67,14 +60,14 @@ def build_ds_key(key, key_prefix='', namespace=None):
 def set_value_on_entity(entity, value):
     """ Set a type-specific attribute on the entity. This is convenient when viewing the datastore
     and avoids (extra) casting overhead. """
-    if isinstance(value, (str, unicode)):
+    if isinstance(value, str):
         if len(value) < MAX_STR_LENGTH:
             entity.str_val = value
         else:
             entity.text_val = value
     elif isinstance(value, (bool)):
         entity.bool_val = value
-    elif isinstance(value, (int, long)):
+    elif isinstance(value, int):
         entity.int_val = value
     elif isinstance(value, (float)):
         entity.float_val = value
@@ -85,14 +78,10 @@ def set_value_on_entity(entity, value):
     elif isinstance(value, (datetime.time)):
         entity.time_val = value
     else:
-        # attempt to JSON encode - it's much faster than pickle and nicer to read in datastore viewer
-        if HAS_SIMPLEJSON:
-            try:
-                json = simplejson.dumps(value)
-                entity.json_val = json
-            except Exception:
-                entity.blob_val = pickle.dumps(value)
-        else:
+        try:
+            json = json.dumps(value)
+            entity.json_val = json
+        except Exception:
             entity.blob_val = pickle.dumps(value)
 
 def get_value_from_entity(entity):
@@ -120,9 +109,7 @@ def get_value_from_entity(entity):
     if entity.text_val is not None:
         return entity.text_val
     if entity.json_val is not None:
-        if HAS_SIMPLEJSON:
-            return simplejson.loads(entity.json_val)
-        raise Exception('JSON value in DSCache, but simplejson cannot be imported. Value can not be deserialized.')
+        return json.loads(entity.json_val)
     if entity.blob_val is not None:
         return pickle.loads(entity.blob_val)
 
@@ -184,14 +171,14 @@ def set_multi(mapping, time=0, key_prefix='', namespace=None, **ctx_options):
     """
     # create a list of tuples: [ (entity_for_datastore, mapping_key), ... ]
     entity_key_tuples = [(create_entity(key, value, time=time, key_prefix=key_prefix, namespace=namespace), key)
-                         for key, value in mapping.items()]
+                         for key, value in list(mapping.items())]
 
     # chunk tuples into lists of max 500
     entities = _chunks(entity_key_tuples, 500)
 
     failed_keys = []
     for sub_list in entities:
-        entities, keys = zip(*sub_list)
+        entities, keys = list(zip(*sub_list))
         try:
             ndb.put_multi(entities, **ctx_options)
         except Exception:
@@ -244,7 +231,7 @@ def get_multi(keys, key_prefix='', namespace=None, **ctx_options):
         logging.exception('dscache: error on dscache.get_multi(). %s', s[:50])
         return {}
     else:
-        entity_map = dict([(entity.key, entity) for entity in entities if entity])
+        entity_map = {entity.key: entity for entity in entities if entity}
         result = {}
         for key in keys:
             ds_key = build_ds_key(key, key_prefix=key_prefix, namespace=namespace)
@@ -392,7 +379,7 @@ def get_stats():
     raise NotImplementedError()
 
 
-class Client(object):
+class Client:
     """ A Client() interface for memcached compatibility. """
 
     def __init__(self):

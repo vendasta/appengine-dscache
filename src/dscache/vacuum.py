@@ -18,17 +18,15 @@ Copyright 2010 VendAsta Technologies Inc.
 """
 
 import datetime
-from google.appengine.ext import webapp, ndb
-from models import _DSCache
+from google.appengine.ext import ndb
+from .models import _DSCache
+from flask.views import MethodView
 
 BATCH_DELETE_SIZE = 100
 
-class Vacuum(webapp.RequestHandler):
-    """ A vacuum to clean up old dscache entries. 
-    
-    Specify a url mapping to this handler, then add it to your cron.yaml (e.g., every 5 minutes synchronized).
-    """
-    
+class Vacuum(MethodView):
+    """ A vacuum to clean up old dscache entries. """
+
     def get(self):
         """ The GET method. """
         now = datetime.datetime.utcnow()
@@ -42,3 +40,4 @@ class Vacuum(webapp.RequestHandler):
         while len(keys) == BATCH_DELETE_SIZE:
             keys = query.fetch(BATCH_DELETE_SIZE, keys_only=True)
             ndb.delete_multi(keys)
+        return "", 200
