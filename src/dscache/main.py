@@ -19,26 +19,4 @@ Copyright 2010 VendAsta Technologies Inc.
 See http://code.google.com/p/appengine-dscache/wiki/GettingStarted for instructions.
 """
 
-from google.appengine.ext import webapp
-from google.appengine.ext.webapp import util
-from vacuum import Vacuum
-
-def createApplication():
-    """Create new WSGIApplication and register all handlers.
-
-    Returns:
-        an instance of webapp.WSGIApplication with all dscache handlers registered.
-    """
-    return webapp.WSGIApplication([
-        (r"^/[^\/]+/vacuum/", Vacuum)
-    ],
-    debug=True)
-
-APP = createApplication()
-
-def main():
-    """ Main entry point. """
-    util.run_wsgi_app(APP)
-
-if __name__ == "__main__":
-    main()
+from .vacuum import Vacuum

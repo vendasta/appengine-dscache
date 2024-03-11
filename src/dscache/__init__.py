@@ -17,4 +17,4 @@ Copyright 2010 VendAsta Technologies Inc.
    limitations under the License.
 """
 
-from dscache import *
+from .dscache import *
