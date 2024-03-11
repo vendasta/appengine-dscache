@@ -18,3 +18,4 @@ Copyright 2010 VendAsta Technologies Inc.
 """
 
 from .dscache import *
+from .vacuum import Vacuum
