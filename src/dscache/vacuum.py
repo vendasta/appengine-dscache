@@ -20,14 +20,13 @@ Copyright 2010 VendAsta Technologies Inc.
 import datetime
 from google.appengine.ext import ndb
 from .models import _DSCache
-from flask.views import MethodView
 
 BATCH_DELETE_SIZE = 100
 
-class Vacuum(MethodView):
+class Vacuum:
     """ A vacuum to clean up old dscache entries. """
 
-    def get(self):
+    def __call__(self, environ, start_response):
         """ The GET method. """
         now = datetime.datetime.utcnow()
         
@@ -40,4 +39,6 @@ class Vacuum(MethodView):
         while len(keys) == BATCH_DELETE_SIZE:
             keys = query.fetch(BATCH_DELETE_SIZE, keys_only=True)
             ndb.delete_multi(keys)
-        return "", 200
+        
+        start_response('200 OK', [('Content-Type', 'text/plain')])
+        return [b'']
