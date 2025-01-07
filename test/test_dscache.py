@@ -4,6 +4,7 @@ import os
 import time
 import unittest
 import datetime
+from google.appengine.api import full_app_id
 from google.appengine.ext import testbed
 from dscache import dscache
 from dscache.models import _DSCache
@@ -14,7 +15,7 @@ class DatastoreTests(unittest.TestCase):
     def setUp(self):
         """Sets up the unit test environment."""
         APP_ID = 'dev-test'
-        os.environ['APPLICATION_ID'] = APP_ID
+        full_app_id.put(APP_ID)
         self.testbed = testbed.Testbed()
         self.testbed.activate()
         self.testbed.init_datastore_v3_stub()
