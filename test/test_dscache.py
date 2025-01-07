@@ -1,7 +1,5 @@
 """ Tests for vendasta.appengine.api.dscache """
 
-import os
-import time
 import unittest
 import datetime
 from google.appengine.api import full_app_id
