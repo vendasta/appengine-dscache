@@ -1,0 +1,29 @@
+steps:
+  # Install dependencies including build tools
+  - name: 'python:3.9'
+    dir: /workspace # Run pip install from the root where requirements.txt is
+    script: |
+      #!/usr/bin/env bash
+      pip install --prefer-binary -r requirements.txt --user --no-warn-script-location
+    id: "install-dependencies"
+
+  # Build sdist and wheel
+  - name: 'python:3.9'
+    dir: /workspace/src # Run build from the src directory where setup.py is
+    script: |
+      #!/usr/bin/env bash
+      python3 -m build . --sdist --wheel --outdir dist/
+    id: "build"
+
+  # Upload to Artifact Registry using twine
+  - name: 'python:3.9'
+    dir: /workspace/src # Run twine from the src directory where dist/ will be created
+    script: |
+      #!/usr/bin/env bash
+      # Ensure twine installed via --user is in PATH
+      export PATH="${PATH}:$(python3 -m site --user-base)/bin"
+      python3 -m twine upload --repository-url https://us-central1-python.pkg.dev/repcore-prod/python/ dist/*
+    id: "publish"
+
+options:
+  logging: CLOUD_LOGGING_ONLY 
